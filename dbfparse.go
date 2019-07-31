@@ -1,6 +1,7 @@
 package dbfparse
 
 import (
+	"fmt"
 	"os"
 )
 
@@ -30,8 +31,10 @@ type FieldDesc struct {
 
 type parser struct {
 	FileName string
+	Fp       *os.File
 	DbfHeader
 	FieldDescs []*FieldDesc
+	OneRecLen  uint32
 }
 
 func NewParser(fileName string) (*parser, error) {
@@ -40,12 +43,15 @@ func NewParser(fileName string) (*parser, error) {
 		return nil, err
 	}
 
+	defer fp.Close()
+
 	parser := &parser{
 		FileName:   fileName,
+		Fp:         fp,
 		FieldDescs: []*FieldDesc{},
 	}
 
-	err = parser.Parse(fp)
+	err = parser.ParseHead()
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +59,8 @@ func NewParser(fileName string) (*parser, error) {
 	return parser, nil
 }
 
-func (p *parser) Parse(fp *os.File) error {
+func (p *parser) ParseHead() error {
+	fp := p.Fp
 	buf := make([]byte, 2)
 	fp.Seek(8, 0) // nolint: errcheck
 	_, err := fp.Read(buf)
@@ -95,16 +102,24 @@ func (p *parser) Parse(fp *os.File) error {
 
 	p.LangDriver = buf[29]
 
-	for curLen := 32; buf[curLen] == 0x0D; curLen += 32 {
+	fmt.Printf("%X", buf[32])
+	for curLen := 32; buf[curLen] != 0x0D; curLen += 32 {
 		fieldDesc := &FieldDesc{
 			FieldName:      string(buf[curLen : curLen+11]),
 			FieldType:      char(buf[curLen+11]),
-			FieldLength:    buf[16],
-			FieldPrecision: buf[17],
+			FieldLength:    buf[curLen+16],
+			FieldPrecision: buf[curLen+17],
 		}
+		p.OneRecLen += uint32(fieldDesc.FieldLength)
 		p.FieldDescs = append(p.FieldDescs, fieldDesc)
 	}
 
 	return nil
+
+}
+
+func (p *parser) ParseRecord() {
+	fp := p.Fp
+	fp.Seek(int64(p.HeaderLength), 0) // nolint: errcheck
 
 }
