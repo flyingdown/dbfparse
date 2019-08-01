@@ -34,7 +34,6 @@ type parser struct {
 	Fp       *os.File
 	DbfHeader
 	FieldDescs []*FieldDesc
-	OneRecLen  uint32
 }
 
 func NewParser(fileName string) (*parser, error) {
@@ -102,7 +101,6 @@ func (p *parser) ParseHead() error {
 
 	p.LangDriver = buf[29]
 
-	fmt.Printf("%X", buf[32])
 	for curLen := 32; buf[curLen] != 0x0D; curLen += 32 {
 		fieldDesc := &FieldDesc{
 			FieldName:      string(buf[curLen : curLen+11]),
@@ -110,7 +108,6 @@ func (p *parser) ParseHead() error {
 			FieldLength:    buf[curLen+16],
 			FieldPrecision: buf[curLen+17],
 		}
-		p.OneRecLen += uint32(fieldDesc.FieldLength)
 		p.FieldDescs = append(p.FieldDescs, fieldDesc)
 	}
 
@@ -118,8 +115,52 @@ func (p *parser) ParseHead() error {
 
 }
 
-func (p *parser) ParseRecord() {
-	fp := p.Fp
+func (p *parser) ParseRecord() error {
+	fp, err := os.Open(p.FileName)
+	if err != nil {
+		return err
+	}
+
+	defer fp.Close()
 	fp.Seek(int64(p.HeaderLength), 0) // nolint: errcheck
 
+	// record, err := NewObject(name)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// for i := 0; i < int(p.NumberOfRec); i++ {
+	for i := 0; i < 1; i++ {
+		buf := make([]byte, p.RecordLength)
+		n, err := fp.Read(buf)
+		if n != int(p.RecordLength) || err != nil {
+			return fmt.Errorf("parse error, read %d, %s", n, err.Error())
+		}
+
+		// This record is deleted
+		if buf[0] == 0x2a {
+			continue
+		}
+
+		var (
+			start  uint8 = 0
+			curLen uint8 = 0
+		)
+		for _, fieldDesc := range p.FieldDescs {
+			start = curLen
+			curLen += fieldDesc.FieldLength
+			switch fieldDesc.FieldType {
+			case 'C':
+				fmt.Printf("[name %s, value %s]", fieldDesc.FieldName, string(buf[start:curLen]))
+			case 'N':
+				fmt.Printf("[name %s, value %s]", fieldDesc.FieldName, string(buf[start:curLen]))
+				// case 'I':
+				// 	fmt.Printf("name %s, value %f\n", fieldDesc.FieldName, buf[start:curLen])
+
+			}
+		}
+		fmt.Println()
+
+	}
+	return nil
 }

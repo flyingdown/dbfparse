@@ -14,5 +14,12 @@ func TestDbParse(t *testing.T) {
 		for _, fieldDesc := range parser.FieldDescs {
 			t.Logf("field desc %v", fieldDesc)
 		}
+
+	}
+	err = parser.ParseRecord()
+	if err != nil {
+		t.Error(err.Error())
+	} else {
+		t.Logf("ok")
 	}
 }
