@@ -1,7 +1,6 @@
 package dbfparse
 
 import (
-	"fmt"
 	"os"
 )
 
@@ -102,7 +101,6 @@ func (p *parser) ParseHead() error {
 
 	p.LangDriver = buf[29]
 
-	fmt.Printf("%X", buf[32])
 	for curLen := 32; buf[curLen] != 0x0D; curLen += 32 {
 		fieldDesc := &FieldDesc{
 			FieldName:      string(buf[curLen : curLen+11]),
