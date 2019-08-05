@@ -1,0 +1,9 @@
+*.out
+*.exe*
+*.zip
+*.tmp
+*.bak
+*.tar
+*.gz
+*.log
+logs/*

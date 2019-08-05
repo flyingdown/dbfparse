@@ -1,7 +1,12 @@
 package dbfparse
 
 import (
-	"os"
+	"fmt"
+	"io"
+	"log"
+	"reflect"
+	"strings"
+	"wangaq/codeconvert"
 )
 
 type char uint8
@@ -29,27 +34,18 @@ type FieldDesc struct {
 }
 
 type parser struct {
-	FileName string
-	Fp       *os.File
+	ReadSeeker io.ReadSeeker
 	DbfHeader
 	FieldDescs []*FieldDesc
 }
 
-func NewParser(fileName string) (*parser, error) {
-	fp, err := os.Open(fileName)
-	if err != nil {
-		return nil, err
-	}
-
-	defer fp.Close()
-
+func NewParser(readSeeker io.ReadSeeker) (*parser, error) {
 	parser := &parser{
-		FileName:   fileName,
-		Fp:         fp,
+		ReadSeeker: readSeeker,
 		FieldDescs: []*FieldDesc{},
 	}
 
-	err = parser.ParseHead()
+	err := parser.ParseHead()
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +54,7 @@ func NewParser(fileName string) (*parser, error) {
 }
 
 func (p *parser) ParseHead() error {
-	fp := p.Fp
+	fp := p.ReadSeeker
 	buf := make([]byte, 2)
 	fp.Seek(8, 0) // nolint: errcheck
 	_, err := fp.Read(buf)
@@ -101,8 +97,9 @@ func (p *parser) ParseHead() error {
 	p.LangDriver = buf[29]
 
 	for curLen := 32; buf[curLen] != 0x0D; curLen += 32 {
+		nameBuf, _ := codeconvert.GbkToUtf8(buf[curLen : curLen+11])
 		fieldDesc := &FieldDesc{
-			FieldName:      string(buf[curLen : curLen+11]),
+			FieldName:      strings.Trim(string(nameBuf), "\x00"),
 			FieldType:      char(buf[curLen+11]),
 			FieldLength:    buf[curLen+16],
 			FieldPrecision: buf[curLen+17],
@@ -114,52 +111,92 @@ func (p *parser) ParseHead() error {
 
 }
 
-func (p *parser) ParseRecord() error {
-	fp, err := os.Open(p.FileName)
-	if err != nil {
-		return err
-	}
-
-	defer fp.Close()
+func (p *parser) ParseRecord(name string) (chan interface{}, error) {
+	fp := p.ReadSeeker
 	fp.Seek(int64(p.HeaderLength), 0) // nolint: errcheck
 
-	// record, err := NewObject(name)
-	// if err != nil {
-	// 	return err
-	// }
+	// init the struct
+	tmp, err := NewObject(name)
+	if err != nil {
+		return nil, err
+	}
 
-	// for i := 0; i < int(p.NumberOfRec); i++ {
-	for i := 0; i < 1; i++ {
-		buf := make([]byte, p.RecordLength)
-		n, err := fp.Read(buf)
-		if n != int(p.RecordLength) || err != nil {
-			return fmt.Errorf("parse error, read %d, %s", n, err.Error())
-		}
-
-		// This record is deleted
-		if buf[0] == 0x2a {
-			continue
-		}
-
-		var (
-			start  uint8 = 0
-			curLen uint8 = 0
-		)
+	// find Field tag and set map
+	t := reflect.TypeOf(tmp)
+	if t.Elem().Kind() != reflect.Struct {
+		return nil, fmt.Errorf("%s'type is not struct, %s", name, t)
+	}
+	indexMap := map[string]int{}
+	typeMap := map[string]reflect.Kind{}
+	for i := 0; i < t.Elem().NumField(); i++ {
+		field := t.Elem().Field(i)
+		tag := field.Tag.Get("field")
 		for _, fieldDesc := range p.FieldDescs {
-			start = curLen
-			curLen += fieldDesc.FieldLength
-			switch fieldDesc.FieldType {
-			case 'C':
-				fmt.Printf("[name %s, value %s]", fieldDesc.FieldName, string(buf[start:curLen]))
-			case 'N':
-				fmt.Printf("[name %s, value %s]", fieldDesc.FieldName, string(buf[start:curLen]))
-				// case 'I':
-				// 	fmt.Printf("name %s, value %f\n", fieldDesc.FieldName, buf[start:curLen])
-
+			if tag == fieldDesc.FieldName {
+				indexMap[tag] = i
+				typeMap[tag] = field.Type.Kind()
 			}
 		}
-		fmt.Println()
-
 	}
-	return nil
+
+	recordChan := make(chan interface{})
+
+	go func() {
+		defer close(recordChan)
+		for i := 0; i < int(p.NumberOfRec); i++ {
+			// for i := 0; i < 1; i++ {
+			// init the struct
+			record, err := NewObject(name)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			recordValue := reflect.ValueOf(record).Elem()
+
+			buf := make([]byte, p.RecordLength)
+			n, err := fp.Read(buf)
+			if n != int(p.RecordLength) || err != nil {
+				log.Printf("parse error, read %d, %s", n, err.Error())
+				continue
+			}
+
+			// This record is deleted
+			if buf[0] == 0x2a {
+				continue
+			}
+
+			var (
+				// jump over the delete flag
+				begin  uint8 = 1
+				curLen uint8 = 1
+			)
+			for _, fieldDesc := range p.FieldDescs {
+				begin = curLen
+				curLen += fieldDesc.FieldLength
+				switch fieldDesc.FieldType {
+				case 'C':
+					valueBuf, _ := codeconvert.GbkToUtf8(buf[begin:curLen])
+					// fmt.Printf("[name: %s, value: %s]", fieldDesc.FieldName, strings.TrimSpace(string(valueBuf)))
+					index, ok := indexMap[fieldDesc.FieldName]
+					if ok || typeMap[fieldDesc.FieldName] == reflect.String {
+						recordValue.Field(index).SetString(strings.TrimSpace(string(valueBuf)))
+					}
+				case 'N':
+					valueBuf, _ := codeconvert.GbkToUtf8(buf[begin:curLen])
+					// fmt.Printf("[name: %s, value: %s]", fieldDesc.FieldName, strings.TrimSpace(string(valueBuf)))
+					index, ok := indexMap[fieldDesc.FieldName]
+					if ok || typeMap[fieldDesc.FieldName] == reflect.String {
+						recordValue.Field(index).SetString(strings.TrimSpace(string(valueBuf)))
+					}
+					// case 'I':
+					// 	fmt.Printf("name %s, value %f\n", fieldDesc.FieldName, buf[start:curLen])
+
+				}
+
+			}
+			// fmt.Println(record)
+			recordChan <- record
+		}
+	}()
+	return recordChan, nil
 }
