@@ -122,19 +122,24 @@ func (p *parser) ParseRecord(name string) (chan interface{}, error) {
 	}
 
 	// find Field tag and set map
+	type structInfo struct {
+		index int
+		kind  reflect.Kind
+	}
 	t := reflect.TypeOf(tmp)
 	if t.Elem().Kind() != reflect.Struct {
 		return nil, fmt.Errorf("%s'type is not struct, %s", name, t)
 	}
-	indexMap := map[string]int{}
-	typeMap := map[string]reflect.Kind{}
+	infoMap := map[string]structInfo{}
 	for i := 0; i < t.Elem().NumField(); i++ {
 		field := t.Elem().Field(i)
 		tag := field.Tag.Get("field")
 		for _, fieldDesc := range p.FieldDescs {
 			if tag == fieldDesc.FieldName {
-				indexMap[tag] = i
-				typeMap[tag] = field.Type.Kind()
+				infoMap[tag] = structInfo{
+					i,
+					field.Type.Kind(),
+				}
 			}
 		}
 	}
@@ -165,28 +170,25 @@ func (p *parser) ParseRecord(name string) (chan interface{}, error) {
 				continue
 			}
 
-			var (
-				// jump over the delete flag
-				begin  uint8 = 1
-				curLen uint8 = 1
-			)
+			// jump over the delete flag
+			var curLen uint8 = 1
 			for _, fieldDesc := range p.FieldDescs {
-				begin = curLen
+				begin := curLen
 				curLen += fieldDesc.FieldLength
 				switch fieldDesc.FieldType {
 				case 'C':
 					valueBuf, _ := codeconvert.GbkToUtf8(buf[begin:curLen])
 					// fmt.Printf("[name: %s, value: %s]", fieldDesc.FieldName, strings.TrimSpace(string(valueBuf)))
-					index, ok := indexMap[fieldDesc.FieldName]
-					if ok || typeMap[fieldDesc.FieldName] == reflect.String {
-						recordValue.Field(index).SetString(strings.TrimSpace(string(valueBuf)))
+					info, ok := infoMap[fieldDesc.FieldName]
+					if ok || info.kind == reflect.String {
+						recordValue.Field(info.index).SetString(strings.TrimSpace(string(valueBuf)))
 					}
 				case 'N':
 					valueBuf, _ := codeconvert.GbkToUtf8(buf[begin:curLen])
 					// fmt.Printf("[name: %s, value: %s]", fieldDesc.FieldName, strings.TrimSpace(string(valueBuf)))
-					index, ok := indexMap[fieldDesc.FieldName]
-					if ok || typeMap[fieldDesc.FieldName] == reflect.String {
-						recordValue.Field(index).SetString(strings.TrimSpace(string(valueBuf)))
+					info, ok := infoMap[fieldDesc.FieldName]
+					if ok || info.kind == reflect.String {
+						recordValue.Field(info.index).SetString(strings.TrimSpace(string(valueBuf)))
 					}
 					// case 'I':
 					// 	fmt.Printf("name %s, value %f\n", fieldDesc.FieldName, buf[start:curLen])

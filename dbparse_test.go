@@ -32,6 +32,15 @@ func TestDbParse(t *testing.T) {
 		C string `field:"NAMEA"`
 		D string `field:"DW"`
 		E string `field:"FF"`
+		F string `field:"DF"`
+		G string `field:"BYSZ"`
+		H string `field:"SYSZ"`
+		I string `field:"SF"`
+		J string `field:"QF"`
+		K string `field:"HJ"`
+		L string `field:"QIF"`
+		M string `field:"ZA"`
+		N string `field:"ZH"`
 	}
 
 	Register(&Test{})
@@ -40,11 +49,16 @@ func TestDbParse(t *testing.T) {
 	if err != nil {
 		t.Error(err.Error())
 	} else {
+		i := 0
 		for recordI := range recordChan {
+			if i > 10 {
+				continue
+			}
 			record, ok := recordI.(*Test)
 			if ok {
 				t.Logf("%v", record)
 			}
+			i++
 		}
 		t.Logf("ok")
 	}
