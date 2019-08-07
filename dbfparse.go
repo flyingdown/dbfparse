@@ -6,7 +6,7 @@ import (
 	"log"
 	"reflect"
 	"strings"
-	"wangaq/codeconvert"
+	"github.com/flyingdown/codeconvert"
 )
 
 type char uint8

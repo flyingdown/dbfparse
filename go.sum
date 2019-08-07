@@ -1,0 +1,5 @@
+github.com/flyingdown/codeconvert v0.0.0-20190807065859-a5e58912c16a h1:JA8zBWN8/Vp5LfC5UcLsVWPm03n3PL+MIZ4yOoh/9+8=
+github.com/flyingdown/codeconvert v0.0.0-20190807065859-a5e58912c16a/go.mod h1:FAmo0Iha2v5voHvGIM8x1IzsZG04/h5zyOSya6HErIQ=
+golang.org/x/text v0.3.2 h1:tW2bmiBqwgJj/UpqtC8EpXEZVYOwU0yG4iWbprSVAcs=
+golang.org/x/text v0.3.2/go.mod h1:bEr9sfX3Q8Zfm5fL9x+3itogRgK3+ptLWKqgva+5dAk=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
